@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ping Pong Táctil</title>
+    <title>Ping Pong Táctil con Reset</title>
     <style>
         body {
             margin: 0;
@@ -14,7 +14,7 @@
             background-color: #000;
             font-family: Arial, sans-serif;
             overflow: hidden;
-            touch-action: none; /* Evita el comportamiento táctil por defecto */
+            touch-action: none;
         }
         #gameCanvas {
             border: 2px solid #fff;
@@ -71,6 +71,20 @@
             display: none;
             animation: fadeIn 1s;
         }
+        #resetButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #0066cc;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        #resetButton:hover {
+            transform: scale(1.1);
+        }
         @keyframes fadeIn {
             from { opacity: 0; transform: translate(-50%, -60%); }
             to { opacity: 1; transform: translate(-50%, -50%); }
@@ -103,7 +117,10 @@
         <button onclick="startGame('normal')">Normal</button>
         <button onclick="startGame('hard')">Difícil</button>
     </div>
-    <div id="endScreen"></div>
+    <div id="endScreen">
+        <div id="endMessage"></div>
+        <button id="resetButton" onclick="showMenu()">Reiniciar</button>
+    </div>
 
     <!-- Librería Hammer.js desde CDN -->
     <script src="https://hammerjs.github.io/dist/hammer.min.js"></script>
@@ -114,6 +131,8 @@
         const scoreDisplay = document.getElementById('score');
         const menu = document.getElementById('menu');
         const endScreen = document.getElementById('endScreen');
+        const endMessage = document.getElementById('endMessage');
+        const resetButton = document.getElementById('resetButton');
 
         // Configuración de AudioContext
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -189,7 +208,7 @@
 
         hammer.on('panmove', (e) => {
             if (gameStarted && !gameOver) {
-                touchDelta = e.deltaY * 0.1; // Ajusta sensibilidad
+                touchDelta = e.deltaY * 0.1;
                 player.y += touchDelta;
                 if (player.y < 0) player.y = 0;
                 if (player.y > canvas.height - player.height) player.y = canvas.height - player.height;
@@ -199,7 +218,7 @@
         // Controles de teclado
         document.addEventListener('keydown', (e) => {
             if (e.key in keys) keys[e.key] = true;
-            if (gameOver && e.key === 'Enter') showMenu();
+            if (gameOver && e.key === 'Enter') showMenu(); // Mantiene compatibilidad con Enter
         });
         document.addEventListener('keyup', (e) => {
             if (e.key in keys) keys[e.key] = false;
@@ -332,8 +351,9 @@
             gameOver = true;
             canvas.style.opacity = '0.5';
             endScreen.style.display = 'block';
-            endScreen.textContent = player.score >= 3 ? '¡Victoria!' : 'Derrota...';
+            endMessage.textContent = player.score >= 3 ? '¡Victoria!' : 'Derrota...';
             endScreen.style.animation = 'fadeIn 1s, bounce 1s infinite';
+            resetButton.style.display = 'block';
             createParticles(canvas.width / 2, canvas.height / 2, 20);
             if (player.score >= 3) playWinSound();
             else playLoseSound();
@@ -346,6 +366,7 @@
             canvas.style.opacity = '1';
             endScreen.style.display = 'none';
             endScreen.style.animation = '';
+            resetButton.style.display = 'none';
             resetBall();
         }
 
