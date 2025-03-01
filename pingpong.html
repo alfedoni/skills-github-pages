@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ping Pong con Sonidos Generados</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #gameCanvas {
+            border: 2px solid #fff;
+            background: #1a1a1a;
+            transition: opacity 1s;
+            display: none;
+        }
+        #score {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-size: 24px;
+            text-shadow: 1px 1px 2px #000;
+            display: none;
+        }
+        #menu, #endScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            text-align: center;
+            text-shadow: 2px 2px 4px #000;
+        }
+        #menu {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            animation: fadeIn 0.5s;
+        }
+        #menu h1 {
+            margin: 0 0 20px;
+            font-size: 36px;
+        }
+        #menu button {
+            display: block;
+            margin: 10px auto;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #ff4500;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        #menu button:hover {
+            transform: scale(1.1);
+        }
+        #endScreen {
+            font-size: 48px;
+            display: none;
+            animation: fadeIn 1s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -60%); }
+            to { opacity: 1; transform: translate(-50%, -50%); }
+        }
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-20px); }
+            60% { transform: translateY(-10px); }
+        }
+        .particle {
+            position: absolute;
+            width: 5px;
+            height: 5px;
+            background: #ffd700;
+            border-radius: 50%;
+            animation: explode 0.8s ease-out forwards;
+        }
+        @keyframes explode {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Jugador: 0 - IA: 0</div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div id="menu">
+        <h1>Ping Pong</h1>
+        <button onclick="startGame('easy')">Fácil</button>
+        <button onclick="startGame('normal')">Normal</button>
+        <button onclick="startGame('hard')">Difícil</button>
+    </div>
+    <div id="endScreen"></div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const menu = document.getElementById('menu');
+        const endScreen = document.getElementById('endScreen');
+
+        // Configuración de AudioContext
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSound(frequency, duration, type = 'sine', volume = 0.3) {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = type;
+            oscillator.frequency.value = frequency;
+            gainNode.gain.value = volume;
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            oscillator.stop(audioCtx.currentTime + duration);
+        }
+
+        function playPaddleHit() {
+            playSound(400, 0.1); // Tono corto y agudo
+        }
+
+        function playWallHit() {
+            playSound(200, 0.05, 'square'); // Tono más grave y cuadrado
+        }
+
+        function playScoreSound() {
+            playSound(300, 0.2, 'triangle'); // Tono medio con triángulo
+        }
+
+        function playWinSound() {
+            playSound(500, 0.3); // Sube
+            setTimeout(() => playSound(700, 0.3), 200); // Más alto
+            setTimeout(() => playSound(900, 0.3), 400); // Triunfal
+        }
+
+        function playLoseSound() {
+            playSound(300, 0.4); // Baja
+            setTimeout(() => playSound(200, 0.4), 200); // Más baja
+            setTimeout(() => playSound(100, 0.4), 400); // Triste
+        }
+
+        // Objetos del juego
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 10,
+            speedX: 5,
+            speedY: 5,
+            trail: [],
+        };
+
+        const player = {
+            x: 50,
+            y: canvas.height / 2 - 50,
+            width: 10,
+            height: 100,
+            speed: 8,
+            score: 0,
+        };
+
+        const ai = {
+            x: canvas.width - 60,
+            y: canvas.height / 2 - 50,
+            width: 10,
+            height: 100,
+            speed: 6,
+            score: 0,
+        };
+
+        let keys = { ArrowUp: false, ArrowDown: false };
+        let gameOver = false;
+        let gameStarted = false;
+        let difficultySettings = {
+            easy: { aiSpeed: 4, ballSpeed: 4 },
+            normal: { aiSpeed: 6, ballSpeed: 5 },
+            hard: { aiSpeed: 8, ballSpeed: 6 }
+        };
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key in keys) keys[e.key] = true;
+            if (gameOver && e.key === 'Enter') showMenu();
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.key in keys) keys[e.key] = false;
+        });
+
+        function startGame(difficulty) {
+            gameStarted = true;
+            gameOver = false;
+            menu.style.display = 'none';
+            canvas.style.display = 'block';
+            scoreDisplay.style.display = 'block';
+            ai.speed = difficultySettings[difficulty].aiSpeed;
+            ball.speedX = difficultySettings[difficulty].ballSpeed;
+            resetGame();
+        }
+
+        function update() {
+            if (!gameStarted || gameOver) return;
+
+            // Movimiento del jugador
+            if (keys.ArrowUp && player.y > 0) player.y -= player.speed;
+            if (keys.ArrowDown && player.y < canvas.height - player.height) player.y += player.speed;
+
+            // Movimiento de la IA
+            const aiTarget = ball.y - ai.height / 2;
+            if (ai.y < aiTarget && ai.y < canvas.height - ai.height) ai.y += ai.speed;
+            if (ai.y > aiTarget && ai.y > 0) ai.y -= ai.speed;
+
+            // Movimiento de la pelota
+            ball.x += ball.speedX;
+            ball.y += ball.speedY;
+            ball.trail.push({ x: ball.x, y: ball.y });
+            if (ball.trail.length > 10) ball.trail.shift();
+
+            // Rebote en bordes
+            if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
+                ball.speedY = -ball.speedY;
+                createParticles(ball.x, ball.y, 5);
+                playWallHit();
+            }
+
+            // Colisión con paletas
+            if (
+                (ball.x - ball.radius < player.x + player.width && ball.y > player.y && ball.y < player.y + player.height) ||
+                (ball.x + ball.radius > ai.x && ball.y > ai.y && ball.y < ai.y + ai.height)
+            ) {
+                ball.speedX = -ball.speedX * 1.1;
+                createParticles(ball.x, ball.y, 10);
+                playPaddleHit();
+            }
+
+            // Puntuación
+            if (ball.x < 0) {
+                ai.score++;
+                playScoreSound();
+                resetBall();
+            } else if (ball.x > canvas.width) {
+                player.score++;
+                playScoreSound();
+                resetBall();
+            }
+
+            if (player.score >= 3 || ai.score >= 3) {
+                endGame();
+            }
+
+            scoreDisplay.textContent = `Jugador: ${player.score} - IA: ${ai.score}`;
+        }
+
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.speedX = (Math.random() > 0.5 ? difficultySettings.easy.ballSpeed : -difficultySettings.easy.ballSpeed) * (Math.random() * 0.5 + 0.8);
+            ball.speedY = (Math.random() * 10 - 5) * (Math.random() * 0.5 + 0.8);
+            ball.trail = [];
+        }
+
+        function createParticles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = `${x + canvas.offsetLeft}px`;
+                particle.style.top = `${y + canvas.offsetTop}px`;
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 30 + 10;
+                particle.style.transform = `translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px)`;
+                document.body.appendChild(particle);
+                setTimeout(() => particle.remove(), 800);
+            }
+        }
+
+        function draw() {
+            if (!gameStarted) return;
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Línea central
+            ctx.beginPath();
+            ctx.setLineDash([5, 15]);
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Estela de la pelota
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ball.trail.forEach((pos, index) => {
+                const size = ball.radius * (1 - index / ball.trail.length);
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Paletas
+            ctx.fillStyle = '#00ff00';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(ai.x, ai.y, ai.width, ai.height);
+
+            // Pelota
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function endGame() {
+            gameOver = true;
+            canvas.style.opacity = '0.5';
+            endScreen.style.display = 'block';
+            endScreen.textContent = player.score >= 3 ? '¡Victoria!' : 'Derrota...';
+            endScreen.style.animation = 'fadeIn 1s, bounce 1s infinite';
+            createParticles(canvas.width / 2, canvas.height / 2, 20);
+            if (player.score >= 3) playWinSound();
+            else playLoseSound();
+        }
+
+        function resetGame() {
+            player.score = 0;
+            ai.score = 0;
+            gameOver = false;
+            canvas.style.opacity = '1';
+            endScreen.style.display = 'none';
+            endScreen.style.animation = '';
+            resetBall();
+        }
+
+        function showMenu() {
+            gameStarted = false;
+            canvas.style.display = 'none';
+            scoreDisplay.style.display = 'none';
+            endScreen.style.display = 'none';
+            menu.style.display = 'block';
+            resetGame();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
